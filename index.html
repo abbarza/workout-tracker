@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Workout Tracker</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#030712;color:#fff;font-family:system-ui,-apple-system,sans-serif;min-height:100vh}
+    #app{max-width:600px;margin:0 auto;padding:20px 16px 80px}
+    h1{font-size:22px;font-weight:800;margin-bottom:2px}
+    .sub{color:#6b7280;font-size:13px;margin-bottom:20px}
+    .tabs{display:flex;background:#111827;border-radius:12px;padding:4px;gap:4px;margin-bottom:20px}
+    .tab{flex:1;padding:8px 4px;border-radius:8px;border:none;font-weight:600;font-size:12px;background:transparent;color:#9ca3af;cursor:pointer}
+    .tab.on{background:#4f46e5;color:#fff}
+    .card{background:#111827;border-radius:14px;padding:14px;margin-bottom:12px}
+    .lbl{color:#6b7280;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+    select,input[type=text],input[type=number]{background:#1f2937;border:1px solid #374151;border-radius:8px;padding:9px 11px;color:#fff;font-size:14px;outline:none;width:100%}
+    select option{background:#1f2937}
+    .row{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+    .row input{width:62px;flex:none}
+    .toggle{display:flex;border-radius:8px;overflow:hidden;border:1px solid #374151;flex:1}
+    .tbtn{flex:1;border:none;padding:9px 0;font-size:12px;font-weight:700;background:#1f2937;color:#6b7280;cursor:pointer}
+    .tag{display:inline-block;background:#1f2937;border-radius:8px;padding:4px 9px;font-size:12px;margin:2px}
+    .rec{border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:13px;border-left:3px solid;background:#0f172a}
+    .info{background:#0f172a;border:1px solid #1f2937;border-radius:8px;padding:9px 12px;margin-bottom:8px}
+    .pbtn{width:100%;background:#4f46e5;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;margin-top:8px}
+    .sbtn{width:100%;background:#3730a3;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:15px;cursor:pointer}
+    .sbtn:disabled{background:#1f2937;color:#4b5563;cursor:not-allowed}
+    .ghost{background:none;border:none;color:#818cf8;font-size:13px;padding:4px 0;cursor:pointer;display:block;margin-bottom:12px}
+    .toast{background:#065f46;color:#6ee7b7;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-weight:600;font-size:14px}
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:99;padding:16px}
+    .modal{background:#111827;border-radius:16px;padding:20px;width:100%;max-width:420px;max-height:82vh;overflow-y:auto}
+    .qbox{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+    .qtag{border-radius:8px;padding:3px 10px;font-size:12px;display:inline-block}
+    .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px}
+    canvas{display:block;width:100%!important;max-width:100%}
+    .chart-title{color:#6b7280;font-size:12px;font-weight:700;text-transform:uppercase;margin-bottom:8px;letter-spacing:.5px}
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ── Data ──────────────────────────────────────────────────────────────────────
+const EC={Easy:'#22c55e',Hard:'#ef4444'};
+const PRESETS=['Bench Press','Squat','Deadlift','Overhead Press','Barbell Row','Pull-Up',
+  'Dumbbell Curl','Tricep Pushdown','Leg Press','Plank','Incline DB Press',
+  'ISO Lateral Incline Press','Chest Flyes','Pull Downs','ISO Lateral Row',
+  'DB Rear Delt Flyes','Lateral DB Raises','DB Shoulder Press','Lateral Cable Raises',
+  'Lunges','Machine Deadlift','Calf Raises'];
+const DEF_TMPLS=[
+  {id:'t1',name:'Chest / Back Day',exercises:['Incline DB Press','ISO Lateral Incline Press','Chest Flyes','Pull Downs','ISO Lateral Row','DB Rear Delt Flyes']},
+  {id:'t2',name:'Shoulders / Legs',exercises:['Lateral DB Raises','DB Shoulder Press','Lateral Cable Raises','Lunges','Machine Deadlift','Calf Raises']},
+];
+const fmt=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+const LS={get:k=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch{return null}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const S={
+  tab:'log',
+  workouts:LS.get('wt_w')||[],
+  custom:LS.get('wt_c')||[],
+  tmpls:LS.get('wt_t')||DEF_TMPLS,
+  atpl:null, // active template
+  ex:'',cex:'',
+  sets:[{w:'',r:'',p:'',e:'Easy'}],
+  sess:[],
+  toast:'',_tt:null,
+  subOpen:false,subVal:'',
+  teOpen:false,teId:null,teName:'',teExs:[''],
+  selEx:'',
+};
+const save=()=>{LS.set('wt_w',S.workouts);LS.set('wt_c',S.custom);LS.set('wt_t',S.tmpls)};
+const toast=msg=>{if(S._tt)clearTimeout(S._tt);S.toast=msg;S._tt=setTimeout(()=>{S.toast='';R()},3000)};
+
+// ── Logic ─────────────────────────────────────────────────────────────────────
+const getSess=(w,n)=>w.filter(x=>x.exercises.some(e=>e.name===n)).map(x=>({date:x.date,sets:x.exercises.find(e=>e.name===n).sets}));
+const isDL=sets=>!!(sets?.length&&sets[sets.length-1].isDeload);
+const declined=(a,b)=>{const s1=a.sets[a.sets.length-1],s2=b.sets[b.sets.length-1],w1=parseFloat(s1.w||s1.weight)||0,w2=parseFloat(s2.w||s2.weight)||0,r1=parseInt(s1.r||s1.reps)||0,r2=parseInt(s2.r||s2.reps)||0;return(w1===w2&&r1<r2)||(w1===w2&&r1===r2&&s1.e==='Hard'&&s2.e==='Easy')||false};
+
+function normRec(s,pre){
+  const r=parseInt(s.r||s.reps)||0,w=parseFloat(s.w||s.weight)||0,ef=s.e||s.effort;
+  const wl=w?`@ ${w}lb`:'',p=pre?pre+' ':'';
+  if(ef==='Easy'){
+    if(r>=6&&r<=9)return{msg:`${p}try ${r+1} reps ${wl} 💪`,color:'#22c55e'};
+    if(r>=10){let nw=null;if(w){const rnd=Math.round(w*1.05/5)*5;nw=rnd<=w?w+5:rnd;}return{msg:nw?`${p}try 7 reps @ ${nw}lb 💪`:`${p}try 7 reps + more weight 💪`,color:'#22c55e'};}
+  }
+  if(ef==='Hard'){
+    if(r>=1&&r<=5){const nw=w?Math.round(w*0.9/5)*5:null;return{msg:nw?`${p}try ${r} reps @ ${nw}lb 🔽`:`${p}reduce weight slightly 🔽`,color:'#f59e0b'};}
+    if(r>=6)return{msg:`${p}keep ${r} reps ${wl} 🎯`,color:'#f59e0b'};
+  }
+  return null;
+}
+
+function getRec(name){
+  const ss=getSess(S.workouts,name);if(!ss.length)return null;
+  const[s0,s1,s2]=ss;
+  if(isDL(s0.sets)){const pre=ss.find((s,i)=>i>0&&!isDL(s.sets));return pre?normRec(pre.sets[pre.sets.length-1],'Coming off deload —'):null;}
+  if(s1&&s2&&!isDL(s1.sets)&&!isDL(s2.sets)){
+    const gR=s=>parseInt((s.sets[s.sets.length-1].r||s.sets[s.sets.length-1].reps))||0;
+    const gW=s=>parseFloat((s.sets[s.sets.length-1].w||s.sets[s.sets.length-1].weight))||0;
+    if(gW(s0)===gW(s1)&&gW(s1)===gW(s2)&&gR(s0)<=gR(s1)&&gR(s1)<=gR(s2)&&gR(s0)===gR(s2)){
+      const dw=gW(s0)?Math.round(gW(s0)*0.8/5)*5:null;return{msg:dw?`Reps stuck 3 sessions — deload @ ${dw}lb 🔄`:`Deload today 🔄`,color:'#f59e0b',isDeload:true};
+    }
+  }
+  if(s1&&!isDL(s1.sets)&&declined(s0,s1)){const dw=parseFloat((s0.sets[s0.sets.length-1].w||s0.sets[s0.sets.length-1].weight))||0,d=dw?Math.round(dw*0.8/5)*5:null;return{msg:d?`Performance declined — deload @ ${d}lb 🔄`:`Deload today 🔄`,color:'#f59e0b',isDeload:true};}
+  return normRec(s0.sets[s0.sets.length-1],'Last session —');
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+function drawChart(canvasId,data,key,color){
+  const c=document.getElementById(canvasId);if(!c)return;
+  const W=c.offsetWidth||320,H=140,pl=38,pr=10,pt=10,pb=26;
+  c.width=W*2;c.height=H*2;c.style.height=H+'px';
+  const ctx=c.getContext('2d');ctx.scale(2,2);
+  const vals=data.map(d=>d[key]);
+  const mn=Math.min(...vals),mx=Math.max(...vals),rng=mx-mn||1;
+  const cx=i=>pl+(i/(data.length-1||1))*(W-pl-pr);
+  const cy=v=>pt+(H-pt-pb)*(1-(v-mn)/rng);
+  // grid
+  ctx.strokeStyle='#1f2937';ctx.lineWidth=1;
+  for(let i=0;i<4;i++){const y=pt+(H-pt-pb)*i/3;ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(W-pr,y);ctx.stroke();}
+  // area
+  const grad=ctx.createLinearGradient(0,pt,0,H-pb);grad.addColorStop(0,color+'55');grad.addColorStop(1,color+'00');
+  ctx.fillStyle=grad;ctx.beginPath();ctx.moveTo(cx(0),cy(vals[0]));
+  data.forEach((_,i)=>{if(i)ctx.lineTo(cx(i),cy(vals[i]))});
+  ctx.lineTo(cx(data.length-1),H-pb);ctx.lineTo(cx(0),H-pb);ctx.closePath();ctx.fill();
+  // line
+  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.lineJoin='round';ctx.beginPath();
+  data.forEach((d,i)=>{i===0?ctx.moveTo(cx(i),cy(vals[i])):ctx.lineTo(cx(i),cy(vals[i]))});ctx.stroke();
+  // dots
+  ctx.fillStyle=color;data.forEach((_,i)=>{ctx.beginPath();ctx.arc(cx(i),cy(vals[i]),3,0,Math.PI*2);ctx.fill();});
+  // labels
+  ctx.fillStyle='#6b7280';ctx.font='10px system-ui';ctx.textAlign='center';
+  const step=Math.max(1,Math.floor(data.length/5));
+  data.forEach((d,i)=>{if(i%step===0||i===data.length-1)ctx.fillText(d.date,cx(i),H-6);});
+  ctx.textAlign='right';
+  for(let i=1;i<=3;i++){const v=mn+rng*i/3;ctx.fillText(Math.round(v),pl-4,cy(v)+4);}
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function R(){
+  const allEx=[...new Set([...PRESETS,...S.custom])].sort();
+  const exName=S.atpl?S.atpl.queue[0]:(S.ex==='__custom__'?S.cex.trim():S.ex);
+  const rec=exName?getRec(exName):null;
+  const prev=exName?(getSess(S.workouts,exName)[0]||null):null;
+  const allExN=[...new Set(S.workouts.flatMap(w=>w.exercises.map(e=>e.name)))].sort();
+  const pSess=S.selEx?getSess(S.workouts,S.selEx).filter(s=>!isDL(s.sets)).reverse():[];
+  const cData=pSess.map(s=>({date:fmt(s.date),maxWeight:Math.max(...s.sets.map(x=>parseFloat(x.w||x.weight)||0)),maxReps:Math.max(...s.sets.map(x=>parseInt(x.r||x.reps)||0)),volume:s.sets.reduce((a,x)=>a+(parseFloat(x.w||x.weight)||0)*(parseInt(x.r||x.reps)||0),0)}));
+
+  const stag=(s,i)=>`<span class="tag">${s.w||s.weight?`${s.w||s.weight}lb`:'BW'} × ${s.r||s.reps}${s.p||s.partials?` + ${s.p||s.partials} partials`:''} · <span style="color:${EC[s.e||s.effort]}">${s.e||s.effort}</span></span>`;
+
+  let html=`
+    <h1>🏋️ Workout Tracker</h1>
+    <p class="sub">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>
+    ${S.toast?`<div class="toast">${S.toast}</div>`:''}
+    <div class="tabs">
+      ${[['log','Log'],['tmpls','Templates'],['hist','History'],['prog','Progress']].map(([k,l])=>`<button class="tab${S.tab===k?' on':''}" onclick="T('${k}')">${l}</button>`).join('')}
+    </div>`;
+
+  if(S.tab==='log'){
+    if(!S.atpl)html+=`<div class="card" style="border-left:3px solid #4f46e5"><div class="lbl">Start from Template</div><div style="display:flex;flex-wrap:wrap;gap:8px">${S.tmpls.map(t=>`<button onclick="loadT('${t.id}')" style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:8px 14px;color:#a5b4fc;font-size:13px;font-weight:600">${t.name}</button>`).join('')}</div></div>`;
+
+    if(S.atpl)html+=`<div class="card" style="border-left:3px solid #4f46e5"><div style="display:flex;justify-content:space-between;align-items:center"><span style="color:#a5b4fc;font-weight:700">📋 ${S.atpl.name}</span><button onclick="clrT()" style="background:none;border:none;color:#ef4444;font-size:13px;cursor:pointer">✕ Cancel</button></div><div class="qbox">${S.atpl.queue.map((ex,i)=>`<span class="qtag" style="background:${i===0?'#4f46e5':'#1f2937'};color:${i===0?'#fff':'#6b7280'};font-weight:${i===0?700:400}">${ex}</span>${i===0?`<button onclick="openSub()" style="background:none;border:1px solid #374151;border-radius:6px;padding:2px 7px;color:#f59e0b;font-size:11px;cursor:pointer">sub</button>`:''}`).join('')}${S.atpl.queue.length===0?'<span style="color:#22c55e;font-size:13px">All done! Save ✓</span>':''}</div></div>`;
+
+    if(S.sess.length)html+=`<div class="card"><div class="lbl">This Session</div>${S.sess.map(ex=>`<div style="margin-bottom:10px"><p style="color:#a5b4fc;font-weight:600;margin-bottom:4px">${ex.name}${isDL(ex.sets)?'<span style="color:#f59e0b;font-size:11px;margin-left:6px">DELOAD</span>':''}</p><div>${ex.sets.map(stag).join('')}</div></div>`).join('')}<button class="pbtn" onclick="finW()">Save Workout ✓</button></div>`;
+
+    if(!S.atpl||S.atpl.queue.length>0)html+=`<div class="card"><div class="lbl">${S.atpl?`Logging: ${exName}`:'Add Exercise'}</div>
+      ${!S.atpl?`<select onchange="SE('ex',this.value)" style="margin-bottom:10px"><option value="">— Select exercise —</option>${allEx.map(p=>`<option${S.ex===p?' selected':''}>${p}</option>`).join('')}<option value="__custom__"${S.ex==='__custom__'?' selected':''}>+ Custom exercise</option></select>${S.ex==='__custom__'?`<input type="text" value="${S.cex}" oninput="SE('cex',this.value)" placeholder="Exercise name" style="margin-bottom:10px">`:'`'}`:'' }
+      ${prev?`<div class="info"><div class="lbl" style="margin-bottom:5px">Last Session · ${fmt(prev.date)}${isDL(prev.sets)?' · DELOAD':''}</div>${prev.sets.map(stag).join('')}</div>`:''}
+      ${rec?`<div class="rec" style="color:${rec.color};border-left-color:${rec.color}">💡 ${rec.msg}</div>`:''}
+      ${S.sets.map((s,i)=>`<div class="row"><span style="color:#4b5563;font-size:13px;min-width:18px">${i+1}.</span><input type="number" placeholder="lbs" value="${s.w}" oninput="US(${i},'w',this.value)" style="width:62px"><input type="number" placeholder="Reps" value="${s.r}" oninput="US(${i},'r',this.value)" style="width:62px"><input type="number" placeholder="Part." value="${s.p}" oninput="US(${i},'p',this.value)" style="width:62px"><div class="toggle">${['Easy','Hard'].map(ef=>`<button class="tbtn" onclick="US(${i},'e','${ef}')" style="background:${s.e===ef?EC[ef]:'#1f2937'};color:${s.e===ef?'#fff':'#6b7280'}">${ef}</button>`).join('')}</div>${S.sets.length>1?`<button onclick="rmS(${i})" style="background:none;border:none;color:#6b7280;font-size:20px;cursor:pointer">×</button>`:''}</div>`).join('')}
+      <button class="ghost" onclick="addS()">+ Add Set</button>
+      <button class="sbtn" onclick="logEx()" ${!exName?'disabled':''}>${S.atpl&&S.atpl.queue.length>1?'Log & Next →':'Add to Session'}</button></div>`;
+  }
+
+  if(S.tab==='tmpls'){
+    html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><span style="color:#9ca3af;font-size:14px">${S.tmpls.length} template${S.tmpls.length!==1?'s':''}</span><button onclick="newTE()" style="background:#4f46e5;border:none;border-radius:10px;padding:8px 16px;color:#fff;font-weight:700;font-size:14px;cursor:pointer">+ New</button></div>`;
+    html+=S.tmpls.map(t=>`<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px"><span style="color:#a5b4fc;font-weight:700;font-size:15px">${t.name}</span><div style="display:flex;gap:6px"><button onclick="editTE('${t.id}')" style="background:none;border:1px solid #374151;border-radius:8px;padding:4px 9px;color:#9ca3af;font-size:12px;cursor:pointer">Edit</button><button onclick="delT('${t.id}')" style="background:none;border:1px solid #374151;border-radius:8px;padding:4px 9px;color:#ef4444;font-size:12px;cursor:pointer">Delete</button></div></div>${t.exercises.map((ex,i)=>`<p style="color:#d1d5db;font-size:13px;margin-bottom:3px">${i+1}. ${ex}</p>`).join('')}<button onclick="loadTgo('${t.id}')" style="width:100%;background:#3730a3;border:none;border-radius:10px;padding:9px;color:#fff;font-weight:700;font-size:13px;cursor:pointer;margin-top:10px">Start Workout →</button></div>`).join('');
+  }
+
+  if(S.tab==='hist'){
+    if(!S.workouts.length)html+=`<p style="color:#4b5563">No workouts yet!</p>`;
+    html+=S.workouts.map(w=>`<div class="card"><p style="color:#a5b4fc;font-weight:700;margin-bottom:10px">${new Date(w.date).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</p>${w.exercises.map(ex=>`<div style="margin-bottom:10px"><p style="font-weight:600;margin-bottom:4px">${ex.name}${isDL(ex.sets)?'<span style="color:#f59e0b;font-size:11px;margin-left:6px">DELOAD</span>':''}</p><div>${ex.sets.map(stag).join('')}</div></div>`).join('')}</div>`).join('');
+  }
+
+  if(S.tab==='prog'){
+    html+=`<select onchange="SE('selEx',this.value)" style="margin-bottom:14px"><option value="">— Select exercise —</option>${allExN.map(n=>`<option${S.selEx===n?' selected':''}>${n}</option>`).join('')}</select>`;
+    if(S.selEx&&cData.length<2)html+=`<p style="color:#4b5563">Need at least 2 sessions for graphs.</p>`;
+    if(S.selEx&&cData.length>=2){
+      [['maxWeight','Max Weight (lbs)','#818cf8'],['maxReps','Max Reps','#34d399'],['volume','Total Volume','#f59e0b']].forEach(([k,l,c])=>{
+        html+=`<div class="card"><div class="chart-title">${l}</div><canvas id="c_${k}"></canvas></div>`;
+      });
+      html+=`<div class="card"><div class="lbl">Session Log</div><div class="grid4" style="margin-bottom:6px">${['Date','Weight','Reps','Effort'].map(h=>`<span style="color:#4b5563;font-size:11px;font-weight:700;text-transform:uppercase">${h}</span>`).join('')}</div>${[...cData].reverse().map((row,i)=>{const sess=[...pSess].reverse()[i];const eff=sess?.sets[sess.sets.length-1].e||sess?.sets[sess.sets.length-1].effort;return`<div class="grid4" style="border-top:1px solid #1f2937;padding:5px 0"><span style="color:#9ca3af;font-size:12px">${row.date}</span><span style="color:#fff;font-size:12px">${row.maxWeight}lb</span><span style="color:#fff;font-size:12px">${row.maxReps}</span><span style="color:${EC[eff]||'#fff'};font-size:12px">${eff}</span></div>`;}).join('')}</div>`;
+    }
+  }
+
+  // Modals
+  if(S.subOpen)html+=`<div class="overlay" onclick="closeSub(event)"><div class="modal"><p style="font-weight:700;font-size:16px;margin-bottom:12px">Substitute "${S.atpl?.queue[0]}"</p><select onchange="SE('subVal',this.value)" style="margin-bottom:14px"><option value="">— Choose replacement —</option>${allEx.filter(e=>!S.atpl?.queue.includes(e)).map(e=>`<option${S.subVal===e?' selected':''}>${e}</option>`).join('')}</select><div style="display:flex;gap:8px"><button onclick="SE('subOpen',false)" style="flex:1;background:#1f2937;border:none;border-radius:10px;padding:10px;color:#9ca3af;font-weight:600;cursor:pointer">Cancel</button><button onclick="applySub()" style="flex:1;background:#4f46e5;border:none;border-radius:10px;padding:10px;color:#fff;font-weight:700;cursor:pointer">Substitute</button></div></div></div>`;
+
+  if(S.teOpen)html+=`<div class="overlay"><div class="modal"><p style="font-weight:700;font-size:17px;margin-bottom:14px">${S.teId?'Edit':'New'} Template</p><input type="text" value="${S.teName}" oninput="SE('teName',this.value)" placeholder="Template name" style="margin-bottom:12px"><div class="lbl">Exercises</div>${S.teExs.map((ex,i)=>`<div style="display:flex;gap:6px;margin-bottom:8px"><select onchange="updTE(${i},this.value)" style="flex:1"><option value="">— Select —</option>${allEx.map(p=>`<option${ex===p?' selected':''}>${p}</option>`).join('')}</select>${S.teExs.length>1?`<button onclick="rmTE(${i})" style="background:none;border:none;color:#6b7280;font-size:20px;cursor:pointer">×</button>`:''}</div>`).join('')}<button class="ghost" onclick="addTE()">+ Add Exercise</button><div style="display:flex;gap:8px;margin-top:6px"><button onclick="SE('teOpen',false)" style="flex:1;background:#1f2937;border:none;border-radius:10px;padding:10px;color:#9ca3af;font-weight:600;cursor:pointer">Cancel</button><button onclick="saveTE()" style="flex:1;background:#4f46e5;border:none;border-radius:10px;padding:10px;color:#fff;font-weight:700;cursor:pointer">Save</button></div></div></div>`;
+
+  document.getElementById('app').innerHTML=html;
+
+  // Draw charts after DOM update
+  if(S.tab==='prog'&&S.selEx&&cData.length>=2){
+    setTimeout(()=>{
+      drawChart('c_maxWeight',cData,'maxWeight','#818cf8');
+      drawChart('c_maxReps',cData,'maxReps','#34d399');
+      drawChart('c_volume',cData,'volume','#f59e0b');
+    },10);
+  }
+}
+
+// ── Handlers ──────────────────────────────────────────────────────────────────
+window.T=t=>{S.tab=t;R()};
+window.SE=(k,v)=>{S[k]=v;R()};
+window.US=(i,f,v)=>{S.sets=S.sets.map((x,idx)=>idx===i?{...x,[f]:v}:x);R()};
+window.addS=()=>{S.sets=[...S.sets,{w:'',r:'',p:'',e:'Easy'}];R()};
+window.rmS=i=>{S.sets=S.sets.filter((_,idx)=>idx!==i);R()};
+
+window.loadT=id=>{const t=S.tmpls.find(x=>x.id===id);if(!t)return;S.atpl={...t,queue:[...t.exercises]};S.sess=[];S.sets=[{w:'',r:'',p:'',e:'Easy'}];S.ex='';R()};
+window.loadTgo=id=>{loadT(id);S.tab='log';R()};
+window.clrT=()=>{S.atpl=null;S.sess=[];S.sets=[{w:'',r:'',p:'',e:'Easy'}];R()};
+window.openSub=()=>{S.subOpen=true;S.subVal='';R()};
+window.closeSub=e=>{if(e.target.classList.contains('overlay')){S.subOpen=false;R()}};
+window.applySub=()=>{if(!S.subVal)return;const q=[...S.atpl.queue];q[0]=S.subVal;S.atpl={...S.atpl,queue:q};S.subOpen=false;R()};
+
+window.logEx=()=>{
+  const exName=S.atpl?S.atpl.queue[0]:(S.ex==='__custom__'?S.cex.trim():S.ex);
+  if(!exName)return toast('Select an exercise first.');
+  const valid=S.sets.filter(s=>s.r);
+  if(!valid.length)return toast('Add at least one set with reps.');
+  if(S.ex==='__custom__'&&exName&&!PRESETS.includes(exName)&&!S.custom.includes(exName)){S.custom=[...S.custom,exName].sort();}
+  const rec=getRec(exName);
+  S.sess=[...S.sess,{name:exName,sets:valid.map(s=>({...s,...(rec?.isDeload?{isDeload:true}:{})}))}];
+  if(S.atpl)S.atpl={...S.atpl,queue:S.atpl.queue.slice(1)};
+  S.ex='';S.cex='';S.sets=[{w:'',r:'',p:'',e:'Easy'}];
+  save();R();
+};
+
+window.finW=()=>{
+  if(!S.sess.length)return;
+  S.workouts=[{date:new Date().toISOString(),exercises:S.sess},...S.workouts];
+  S.sess=[];S.atpl=null;save();toast('Workout saved! 💪');R();
+};
+
+window.newTE=()=>{S.teOpen=true;S.teId=null;S.teName='';S.teExs=[''];R()};
+window.editTE=id=>{const t=S.tmpls.find(x=>x.id===id);if(!t)return;S.teOpen=true;S.teId=id;S.teName=t.name;S.teExs=[...t.exercises];R()};
+window.addTE=()=>{S.teExs=[...S.teExs,''];R()};
+window.rmTE=i=>{S.teExs=S.teExs.filter((_,idx)=>idx!==i);R()};
+window.updTE=(i,v)=>{S.teExs=S.teExs.map((x,idx)=>idx===i?v:x);R()};
+window.delT=id=>{S.tmpls=S.tmpls.filter(t=>t.id!==id);save();R()};
+window.saveTE=()=>{
+  if(!S.teName.trim())return toast('Give your template a name.');
+  const exes=S.teExs.filter(e=>e.trim());
+  if(!exes.length)return toast('Add at least one exercise.');
+  if(S.teId)S.tmpls=S.tmpls.map(t=>t.id===S.teId?{...t,name:S.teName.trim(),exercises:exes}:t);
+  else S.tmpls=[...S.tmpls,{id:`t${Date.now()}`,name:S.teName.trim(),exercises:exes}];
+  S.teOpen=false;save();toast('Template saved!');R();
+};
+
+R();
+</script>
+</body>
+</html>
